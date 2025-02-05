@@ -15,7 +15,7 @@ from va_input_params import LAYERS as LY
 from input_params_som import LAYERS, PARAMS
 from va_ClusterAnalysis import CriticalClusterAnalyzer
 from va_CData import ClusterAnalyzer as ExportDateJSon
-
+import subprocess
 class DumpClusterSeparator:
     def __init__(self, input_file='outputs.dump/key_areas_clustering.dump', output_folder='outputs.json'):
         self.input_file = input_file
@@ -62,6 +62,7 @@ class KeyAreasProcessor:
         primer_elemento = LY[0]
         self.relax = primer_elemento['relax']
         self.defect = archivo
+        self.bModifiersMethod=primer_elemento['bOvitoModifiers']
         self.radius = primer_elemento['radius']
         self.smoothing_level = primer_elemento['smoothing level']
         self.cutoff_radius = primer_elemento['cutoff radius']
@@ -106,42 +107,77 @@ class KeyAreasProcessor:
         return coordenadas
 
     def main(self):
-        print("multisom finder")
         pipeline = import_file(self.defect)
         pipeline.modifiers.append(VoronoiAnalysisModifier(compute_indices=True))
         try:
             export_file(pipeline, "key_areas_format.dump", "lammps/dump", columns=["Particle Identifier", "Particle Type", "Position.X", "Position.Y", "Position.Z", "Atomic Volume", "Cavity Radius", "Max Face Order"])
             pipeline.modifiers.clear()
-            import main_som
+
         except Exception as e:
             print(f"Error al exportar el archivo: {e}")
         print("postprossesing SOMs")
-        pipeline_som = import_file("SOM_key_areas_format.dump")
-        pipeline_som.modifiers.append(ConstructSurfaceModifier(radius=self.radius, smoothing_level=self.smoothing_level, identify_regions=True, select_surface_particles=True))
-        pipeline_som.modifiers.append(ExpressionSelectionModifier(expression="layer_1==0"))
-        pipeline_som.modifiers.append(DeleteSelectedModifier())
-        pipeline_som.modifiers.append(ClusterAnalysisModifier(cutoff=self.cutoff_radius, cluster_coloring=True, unwrap_particles=True, sort_by_size=True))
-        data = pipeline_som.compute()
-        atm_ig = data.particles.count
-        cluster_table = data.tables['clusters']
-        cluster_sizes = cluster_table['Cluster Size'][...]
-        print("Cluster Size Table")
-        print(cluster_sizes)
-        num_clusters = data.attributes["ClusterAnalysis.cluster_count"]
-        datos_clusters = {"num_clusters": num_clusters}
-        os.makedirs("outputs.json", exist_ok=True)
-        with open("outputs.json/clusters.json", "w") as archivo:
-            json.dump(datos_clusters, archivo, indent=4)
-        print(f"Se identificaron {num_clusters} áreas claves en la muestra.")
-        try:
-            os.makedirs("outputs.dump", exist_ok=True)
-            export_file(pipeline_som, "outputs.dump/key_areas.dump", "lammps/dump", columns=["Particle Identifier", "Particle Type", "Position.X", "Position.Y", "Position.Z"])
-            export_file(pipeline_som, "outputs.dump/key_areas_clustering.dump", "lammps/dump", columns=["Particle Identifier", "Particle Type", "Position.X", "Position.Y", "Position.Z", "Cluster"])
-            pipeline_som.modifiers.clear()
-        except Exception as e:
-            print(f"Error al exportar el archivo: {e}")
-        pipeline_2 = import_file("outputs.dump/key_areas.dump")
-        clusters = [f"Cluster=={i}" for i in range(1, num_clusters + 1)]
+        if self.bModifiersMethod:
+            print('OvitoModifiersMethod')
+            pipeline_m = import_file(self.defect)
+            pipeline_m.modifiers.append(ConstructSurfaceModifier(
+                radius=self.radius,
+                smoothing_level=self.smoothing_level,
+                identify_regions=True,
+                select_surface_particles=True
+            ))   
+            pipeline_m.modifiers.append(InvertSelectionModifier())
+            pipeline_m.modifiers.append(DeleteSelectedModifier())
+            pipeline_m.modifiers.append(ClusterAnalysisModifier(cutoff=self.cutoff_radius, cluster_coloring=True, unwrap_particles=True, sort_by_size=True))
+            data = pipeline_m.compute()
+            atm_ig = data.particles.count
+            cluster_table = data.tables['clusters']
+            cluster_sizes = cluster_table['Cluster Size'][...]
+            print("Cluster Size Table")
+            print(cluster_sizes)
+            num_clusters = data.attributes["ClusterAnalysis.cluster_count"]
+            datos_clusters = {"num_clusters": num_clusters}
+            os.makedirs("outputs.json", exist_ok=True)
+            with open("outputs.json/clusters.json", "w") as archivo:
+                json.dump(datos_clusters, archivo, indent=4)
+            print(f"Se identificaron {num_clusters} áreas claves en la muestra.")
+            try:
+                os.makedirs("outputs.dump", exist_ok=True)
+                export_file(pipeline_m, "outputs.dump/key_areas.dump", "lammps/dump", columns=["Particle Identifier", "Particle Type", "Position.X", "Position.Y", "Position.Z"])
+                export_file(pipeline_m, "outputs.dump/key_areas_clustering.dump", "lammps/dump", columns=["Particle Identifier", "Particle Type", "Position.X", "Position.Y", "Position.Z", "Cluster"])
+                pipeline_som.modifiers.clear()
+            except Exception as e:
+                print(f"Error al exportar el archivo: {e}")
+            pipeline_2 = import_file("outputs.dump/key_areas.dump")
+            clusters = [f"Cluster=={i}" for i in range(1, num_clusters + 1)]           
+
+        else:    
+            import main_som
+            pipeline_som = import_file("SOM_key_areas_format.dump")
+            pipeline_som.modifiers.append(ConstructSurfaceModifier(radius=self.radius, smoothing_level=self.smoothing_level, identify_regions=True, select_surface_particles=True))
+            pipeline_som.modifiers.append(ExpressionSelectionModifier(expression="layer_1==0"))
+            pipeline_som.modifiers.append(DeleteSelectedModifier())
+            pipeline_som.modifiers.append(ClusterAnalysisModifier(cutoff=self.cutoff_radius, cluster_coloring=True, unwrap_particles=True, sort_by_size=True))
+            data = pipeline_som.compute()
+            atm_ig = data.particles.count
+            cluster_table = data.tables['clusters']
+            cluster_sizes = cluster_table['Cluster Size'][...]
+            print("Cluster Size Table")
+            print(cluster_sizes)
+            num_clusters = data.attributes["ClusterAnalysis.cluster_count"]
+            datos_clusters = {"num_clusters": num_clusters}
+            os.makedirs("outputs.json", exist_ok=True)
+            with open("outputs.json/clusters.json", "w") as archivo:
+                json.dump(datos_clusters, archivo, indent=4)
+            print(f"Se identificaron {num_clusters} áreas claves en la muestra.")
+            try:
+                os.makedirs("outputs.dump", exist_ok=True)
+                export_file(pipeline_som, "outputs.dump/key_areas.dump", "lammps/dump", columns=["Particle Identifier", "Particle Type", "Position.X", "Position.Y", "Position.Z"])
+                export_file(pipeline_som, "outputs.dump/key_areas_clustering.dump", "lammps/dump", columns=["Particle Identifier", "Particle Type", "Position.X", "Position.Y", "Position.Z", "Cluster"])
+                pipeline_som.modifiers.clear()
+            except Exception as e:
+                print(f"Error al exportar el archivo: {e}")
+            pipeline_2 = import_file("outputs.dump/key_areas.dump")
+            clusters = [f"Cluster=={i}" for i in range(1, num_clusters + 1)]
         for i, cluster_expr in enumerate(clusters, start=1):
             pipeline_2 = import_file("outputs.dump/key_areas.dump")
             pipeline_2.modifiers.append(ClusterAnalysisModifier(cutoff=self.cutoff_radius, cluster_coloring=True, unwrap_particles=True, sort_by_size=True))
